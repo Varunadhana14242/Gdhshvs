@@ -17,7 +17,7 @@ from threading import Thread
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = int(os.getenv("CHAT_ID"))  
+CHAT_ID = int(os.getenv("CHAT_ID"))
 
 # Initialize Pyrogram bot client
 bot = Client("telegram_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -32,13 +32,14 @@ def health_check():
 # Function to extract the DropGalaxy direct download link with adblock and 10x speed
 def extract_dropgalaxy_link(url):
     options = Options()
+    options.binary_location = "/usr/bin/google-chrome"  # Fix for Chrome binary location
     options.add_argument("--headless")  # Run without UI
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--window-size=1920,1080")
-    
+
     # Load Chrome with uBlock Origin (AdBlock)
     driver = uc.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
