@@ -1,9 +1,11 @@
 import os
 import time
 import requests
-import re
-import asyncio
 import zipfile
+import asyncio
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from bs4 import BeautifulSoup
@@ -27,59 +29,44 @@ def health_check():
     """Health check endpoint for the server"""
     return "✅ Bot is running!", 200
 
-# Function to get direct download link from AnyDebrid
+# Function to get direct download link from AnyDebrid using Selenium
 def get_premium_link(dropgalaxy_url):
-    session = requests.Session()
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-    }
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # Run in headless mode
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920x1080")
+    chrome_options.add_argument("--no-sandbox")
 
+    driver = webdriver.Chrome(options=chrome_options)
+    
     try:
-        # Step 1: Submit the DropGalaxy link to AnyDebrid
-        debrid_url = "https://anydebrid.com/unrestrict.php"
-        data = {"link": dropgalaxy_url}
+        driver.get("https://anydebrid.com/unrestrict.php")
 
-        response = session.post(debrid_url, data=data, headers=headers)
-        if response.status_code != 200:
-            return "❌ Error: Unable to access AnyDebrid."
+        # Enter the DropGalaxy link in the input field
+        input_box = driver.find_element(By.NAME, "link")
+        input_box.send_keys(dropgalaxy_url)
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        # Click the "Generate" button
+        generate_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+        generate_button.click()
 
-        # Step 2: Extract the first redirect link
-        first_redirect = soup.find("a", href=True, string=re.compile("Click here to continue", re.IGNORECASE))
-        if not first_redirect:
-            return "❌ Error: First redirect not found."
+        # Wait for redirects
+        time.sleep(25)  # Adjust based on actual wait time
 
-        first_redirect_url = first_redirect["href"]
-        print(f"First redirect URL: {first_redirect_url}")
+        # Extract final download link
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        download_link = soup.find("a", string="Download")
 
-        # Step 3: Wait 20 seconds & follow the first redirect
-        time.sleep(20)
-        response = session.get(first_redirect_url, headers=headers)
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Step 4: Extract the second redirect link
-        second_redirect = soup.find("a", href=True, string=re.compile("Click here to proceed", re.IGNORECASE))
-        if not second_redirect:
-            return "❌ Error: Second redirect not found."
-
-        second_redirect_url = second_redirect["href"]
-        print(f"Second redirect URL: {second_redirect_url}")
-
-        # Step 5: Wait another 20 seconds & follow the second redirect
-        time.sleep(20)
-        response = session.get(second_redirect_url, headers=headers)
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Step 6: Extract final download link
-        final_download = soup.find("a", href=True, string=re.compile("Download", re.IGNORECASE))
-        if final_download:
-            return final_download["href"]
+        if download_link:
+            return download_link["href"]
         else:
-            return "❌ Error: Final download link not found."
+            return "❌ Error: Download link not found."
 
-    except requests.exceptions.RequestException as e:
-        return f"❌ Error: {e}"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
+    finally:
+        driver.quit()
 
 # Function to download a file from a URL
 def download_file(url):
