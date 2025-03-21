@@ -78,11 +78,13 @@ async def run_bot():
     app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
-    await app_telegram.run_polling()
+    await app_telegram.run_polling(allowed_updates=Update.ALL_TYPES)
 
 # Run the bot in a separate thread
 def start_bot():
-    asyncio.run(run_bot())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_bot())
 
 threading.Thread(target=start_bot, daemon=True).start()
 
