@@ -14,7 +14,7 @@ from threading import Thread
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")  # The chat ID where notifications will be sent
+CHAT_ID = int(os.getenv("CHAT_ID"))  # Ensure it's an integer
 
 # Initialize Pyrogram bot client
 bot = Client("telegram_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -42,7 +42,7 @@ def extract_dropgalaxy_link(url):
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Step 2: Find the form action URL (this contains the real link)
+        # Step 2: Find the form action URL
         form = soup.find("form", {"method": "POST"})
         if not form:
             return "❌ Error: No download form found."
@@ -50,6 +50,10 @@ def extract_dropgalaxy_link(url):
         action_url = form.get("action")
         if not action_url:
             return "❌ Error: No action URL found."
+
+        # Make sure the action URL is absolute
+        if not action_url.startswith("http"):
+            action_url = f"https://dropgalaxy.com{action_url}"
 
         # Extract hidden inputs required for submission
         payload = {}
@@ -139,35 +143,38 @@ def start_command(client: Client, message: Message):
 async def handle_dropgalaxy(client: Client, message: Message):
     text = message.text.strip()
 
-    if "dropgalaxy" in text:
-        await message.reply_text("⏳ Extracting direct download link...")
+    # ✅ Ensure only ONE error message is sent for invalid links
+    if not re.search(r"dropgalaxy\.com", text):
+        if not hasattr(client, "sent_invalid_link_msg"):  # Check if the bot already sent a message
+            client.sent_invalid_link_msg = True  # Mark that the message was sent
+            await message.reply_text("⚠️ Please send a valid DropGalaxy link.")
+        return
 
-        # Get direct download link from DropGalaxy
-        direct_link = extract_dropgalaxy_link(text)
-        if "❌" in direct_link:
-            await message.reply_text(direct_link)
-            return
+    # ✅ Extract the download link
+    await message.reply_text("⏳ Extracting direct download link...")
 
-        await message.reply_text(f"✅ Direct link found! Downloading file...")
+    direct_link = extract_dropgalaxy_link(text)
+    if "❌" in direct_link:
+        await message.reply_text(direct_link)
+        return
 
-        # Download the file
-        file_path = download_file(direct_link)
+    await message.reply_text(f"✅ Direct link found! Downloading file...")
 
-        # If it's a ZIP file, extract and send files individually
-        if file_path.endswith(".zip"):
-            await message.reply_text("📂 Extracting ZIP file...")
-            extracted_files = extract_zip(file_path)
+    # ✅ Download the file
+    file_path = download_file(direct_link)
 
-            for extracted_file in extracted_files:
-                await send_file_to_telegram(extracted_file, message)
-        else:
-            # Send the file to Telegram
-            await send_file_to_telegram(file_path, message)
+    # ✅ If it's a ZIP file, extract and send files individually
+    if file_path.endswith(".zip"):
+        await message.reply_text("📂 Extracting ZIP file...")
+        extracted_files = extract_zip(file_path)
 
-        await message.reply_text("✅ All files have been sent!")
-
+        for extracted_file in extracted_files:
+            await send_file_to_telegram(extracted_file, message)
     else:
-        await message.reply_text("⚠️ Please send a valid DropGalaxy link.")
+        # ✅ Send the file to Telegram
+        await send_file_to_telegram(file_path, message)
+
+    await message.reply_text("✅ All files have been sent!")
 
 if __name__ == "__main__":
     # Start Flask app for health check in a separate thread
