@@ -1,11 +1,9 @@
 import os
 import time
 import requests
-import zipfile
+import re
 import asyncio
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
+import zipfile
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from bs4 import BeautifulSoup
@@ -29,44 +27,52 @@ def health_check():
     """Health check endpoint for the server"""
     return "✅ Bot is running!", 200
 
-# Function to get direct download link from AnyDebrid using Selenium
-def get_premium_link(dropgalaxy_url):
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Run in headless mode
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920x1080")
-    chrome_options.add_argument("--no-sandbox")
+# Function to extract the real download link from DropGalaxy
+def extract_dropgalaxy_link(url):
+    session = requests.Session()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+    }
 
-    driver = webdriver.Chrome(options=chrome_options)
-    
     try:
-        driver.get("https://anydebrid.com/unrestrict.php")
+        # Step 1: Get the initial page
+        response = session.get(url, headers=headers)
+        if response.status_code != 200:
+            return "❌ Error: Unable to access DropGalaxy."
 
-        # Enter the DropGalaxy link in the input field
-        input_box = driver.find_element(By.NAME, "link")
-        input_box.send_keys(dropgalaxy_url)
+        soup = BeautifulSoup(response.text, "html.parser")
 
-        # Click the "Generate" button
-        generate_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-        generate_button.click()
+        # Step 2: Find the form action URL (this contains the real link)
+        form = soup.find("form", {"method": "POST"})
+        if not form:
+            return "❌ Error: No download form found."
 
-        # Wait for redirects
-        time.sleep(25)  # Adjust based on actual wait time
+        action_url = form.get("action")
+        if not action_url:
+            return "❌ Error: No action URL found."
 
-        # Extract final download link
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        download_link = soup.find("a", string="Download")
+        # Extract hidden inputs required for submission
+        payload = {}
+        for input_tag in form.find_all("input"):
+            name = input_tag.get("name")
+            value = input_tag.get("value", "")
+            if name:
+                payload[name] = value
 
-        if download_link:
+        # Step 3: Simulate clicking the "Download" button
+        time.sleep(5)  # Simulate wait timer
+        post_response = session.post(action_url, data=payload, headers=headers)
+        post_soup = BeautifulSoup(post_response.text, "html.parser")
+
+        # Step 4: Find the final download link
+        download_link = post_soup.find("a", string=re.compile("Download", re.IGNORECASE))
+        if download_link and download_link.get("href"):
             return download_link["href"]
         else:
-            return "❌ Error: Download link not found."
+            return "❌ Error: Direct download link not found."
 
-    except Exception as e:
-        return f"❌ Error: {str(e)}"
-
-    finally:
-        driver.quit()
+    except requests.exceptions.RequestException as e:
+        return f"❌ Error: {e}"
 
 # Function to download a file from a URL
 def download_file(url):
@@ -126,7 +132,7 @@ async def send_file_to_telegram(file_path, message):
 # Telegram bot command handler
 @bot.on_message(filters.command("start"))
 def start_command(client: Client, message: Message):
-    message.reply_text("✅ Bot is running! Send me a DropGalaxy link to bypass using AnyDebrid.")
+    message.reply_text("✅ Bot is running! Send me a DropGalaxy link to download directly.")
 
 # Telegram bot handler for DropGalaxy links
 @bot.on_message(filters.text & ~filters.command(["start"]))
@@ -134,15 +140,15 @@ async def handle_dropgalaxy(client: Client, message: Message):
     text = message.text.strip()
 
     if "dropgalaxy" in text:
-        await message.reply_text("⏳ Checking AnyDebrid for a premium link...")
+        await message.reply_text("⏳ Extracting direct download link...")
 
-        # Get direct download link from AnyDebrid
-        direct_link = get_premium_link(text)
+        # Get direct download link from DropGalaxy
+        direct_link = extract_dropgalaxy_link(text)
         if "❌" in direct_link:
             await message.reply_text(direct_link)
             return
 
-        await message.reply_text(f"✅ Premium link found! Downloading file...")
+        await message.reply_text(f"✅ Direct link found! Downloading file...")
 
         # Download the file
         file_path = download_file(direct_link)
