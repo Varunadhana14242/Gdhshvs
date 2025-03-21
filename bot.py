@@ -32,9 +32,9 @@ def bypass_dropgalaxy(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
     }
-    
+
     try:
-        # Step 1: Get initial page
+        # Step 1: Get the initial page
         response = session.get(url, headers=headers)
         if response.status_code != 200:
             return "❌ Error: Unable to access DropGalaxy."
@@ -68,16 +68,16 @@ def bypass_dropgalaxy(url):
             'method_free': 'Free Download'
         }
 
-        # Step 2: Submit form and wait
-        time.sleep(5)  # Simulate the countdown timer
+        # Step 2: Submit form and wait for countdown
+        time.sleep(5)
         post_response = session.post(action_url, data=payload, headers=headers)
 
-        # Step 3: Extract direct download link
-        final_match = re.search(r'href="(https://[^"]+)"', post_response.text)
+        # Step 3: Extract direct download link using a better regex pattern
+        final_match = re.search(r'<a[^>]+href="(https://[^"]+)"[^>]*>\s*Download\s*</a>', post_response.text, re.IGNORECASE)
         if final_match:
             return final_match.group(1)
         else:
-            return "❌ Error: Direct download link not found."
+            return "❌ Error: Direct download link not found. DropGalaxy may have updated their system."
 
     except requests.exceptions.RequestException as e:
         return f"❌ Error: {e}"
@@ -97,7 +97,7 @@ def download_file(url):
     
     return local_path
 
-# Function to extract ZIP files and return the list of extracted files
+# Function to extract ZIP files and return extracted files
 def extract_zip(file_path):
     extracted_files = []
     extract_folder = file_path.replace(".zip", "")
