@@ -2,6 +2,7 @@ import os
 import requests
 import re
 import time
+import asyncio
 import threading
 from flask import Flask
 from telegram import Update
@@ -72,15 +73,18 @@ def home():
     return "Bot is running successfully!"
 
 # Function to start the Telegram bot
-def run_bot():
+async def run_bot():
     app_telegram = Application.builder().token(TOKEN).build()
     app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
-    app_telegram.run_polling()
+    await app_telegram.run_polling()
 
 # Run the bot in a separate thread
-threading.Thread(target=run_bot).start()
+def start_bot():
+    asyncio.run(run_bot())
+
+threading.Thread(target=start_bot, daemon=True).start()
 
 # Run Flask App
 if __name__ == "__main__":
