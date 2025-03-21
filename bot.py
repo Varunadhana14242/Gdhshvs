@@ -1,38 +1,49 @@
 import os
+import time
 import requests
 import re
-import time
 import asyncio
-import threading
+from pyrogram import Client, filters
+from pyrogram.types import Message
 from flask import Flask
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters
+from threading import Thread
 
-# Initialize Flask app
+# Read environment variables
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")  # The chat ID where notifications will be sent
+
+# Initialize Pyrogram bot client
+bot = Client("telegram_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+
+# Flask App for Health Check
 app = Flask(__name__)
 
-# Get bot token from environment variables
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("Error: BOT_TOKEN is not set. Please add it as an environment variable.")
+@app.route("/")
+def health_check():
+    """Health check endpoint for the server"""
+    return "✅ Bot is running!", 200
 
 # Function to bypass DropGalaxy and get the direct download link
 def bypass_dropgalaxy(url):
     session = requests.Session()
+    
     response = session.get(url)
-
     if response.status_code != 200:
-        return "Error: Unable to access DropGalaxy"
+        return "❌ Error: Unable to access DropGalaxy."
 
+    # Extract form action URL
     match = re.search(r'action="([^"]+)"', response.text)
     if not match:
-        return "Error: No action URL found"
+        return "❌ Error: No action URL found."
 
     action_url = match.group(1)
 
+    # Extract key parameter
     match = re.search(r'name="op" value="([^"]+)"', response.text)
     if not match:
-        return "Error: No operation key found"
+        return "❌ Error: No operation key found."
 
     op_value = match.group(1)
 
@@ -45,58 +56,42 @@ def bypass_dropgalaxy(url):
         'method_free': 'Free Download'
     }
 
-    time.sleep(5)  # Wait for the countdown timer
+    # Submit the form to get the final download link
+    time.sleep(5)  # Simulating the countdown timer
     post_response = session.post(action_url, data=payload)
 
+    # Extract the final download URL
     final_match = re.search(r'href="(https://[^"]+)"', post_response.text)
     if final_match:
         return final_match.group(1)
     else:
-        return "Error: Direct link not found"
+        return "❌ Error: Direct download link not found."
 
-# Function to handle messages
-async def handle_message(update: Update, context):
-    text = update.message.text
+# Telegram bot command handler
+@bot.on_message(filters.command("start"))
+def start_command(client: Client, message: Message):
+    message.reply_text("✅ Bot is running! Send me a DropGalaxy link to bypass.")
+
+# Telegram bot handler for DropGalaxy links
+@bot.on_message(filters.text & ~filters.command)
+def handle_dropgalaxy(client: Client, message: Message):
+    text = message.text.strip()
+
     if "dropgalaxy" in text:
-        await update.message.reply_text("Processing your link, please wait...")
-
+        message.reply_text("⏳ Processing your DropGalaxy link, please wait...")
+        
         direct_link = bypass_dropgalaxy(text)
 
-        if "Error" in direct_link:
-            await update.message.reply_text(direct_link)
-        else:
-            await update.message.reply_text(f"✅ Here is your direct download link:\n{direct_link}")
+        message.reply_text(f"✅ Here is your direct download link:\n{direct_link}")
     else:
-        await update.message.reply_text("Please send a valid DropGalaxy link.")
+        message.reply_text("⚠️ Please send a valid DropGalaxy link.")
 
-# Flask Route for Uptime Monitoring
-@app.route('/')
-def home():
-    return "Bot is running successfully!"
-
-# Function to start the Telegram bot
-async def run_bot():
-    print("Initializing Telegram bot...")
-
-    # Build the application WITHOUT UPDATER
-    app_telegram = Application.builder().token(TOKEN).build()
-
-    # Add message handler
-    app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("Bot is running...")
-    await app_telegram.run_polling(allowed_updates=Update.ALL_TYPES)
-
-# Run the bot in a separate thread
-def start_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(run_bot())
-
-# Start bot in background
-threading.Thread(target=start_bot, daemon=True).start()
-
-# Run Flask App
 if __name__ == "__main__":
-    print("Starting Flask server...")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    # Start Flask app for health check in a separate thread
+    def run_flask():
+        app.run(host="0.0.0.0", port=5000)
+
+    Thread(target=run_flask).start()
+
+    # Start the Telegram bot
+    bot.run()
