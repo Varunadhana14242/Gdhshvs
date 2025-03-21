@@ -78,7 +78,7 @@ def home():
 async def run_bot():
     print("Initializing Telegram bot...")
 
-    # Build the application without Updater
+    # Build the application WITHOUT UPDATER
     app_telegram = Application.builder().token(TOKEN).build()
 
     # Add message handler
