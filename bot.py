@@ -27,7 +27,7 @@ def health_check():
     """Health check endpoint for the server"""
     return "✅ Bot is running!", 200
 
-# Function to get direct download link from HotDebrid
+# Function to get direct download link from AnyDebrid
 def get_premium_link(dropgalaxy_url):
     session = requests.Session()
     headers = {
@@ -35,22 +35,48 @@ def get_premium_link(dropgalaxy_url):
     }
 
     try:
-        # Step 1: Send DropGalaxy link to HotDebrid
-        debrid_url = "https://www.hotdebrid.com/premium-link-generator/dropgalaxy"
+        # Step 1: Submit the DropGalaxy link to AnyDebrid
+        debrid_url = "https://anydebrid.com/unrestrict.php"
         data = {"link": dropgalaxy_url}
 
         response = session.post(debrid_url, data=data, headers=headers)
         if response.status_code != 200:
-            return "❌ Error: Unable to access HotDebrid."
+            return "❌ Error: Unable to access AnyDebrid."
 
-        # Step 2: Extract the generated premium link
         soup = BeautifulSoup(response.text, "html.parser")
-        link_tag = soup.find("a", href=True, text=re.compile("Download", re.IGNORECASE))
 
-        if link_tag:
-            return link_tag["href"]
+        # Step 2: Extract the first redirect link
+        first_redirect = soup.find("a", href=True, string=re.compile("Click here to continue", re.IGNORECASE))
+        if not first_redirect:
+            return "❌ Error: First redirect not found."
+
+        first_redirect_url = first_redirect["href"]
+        print(f"First redirect URL: {first_redirect_url}")
+
+        # Step 3: Wait 20 seconds & follow the first redirect
+        time.sleep(20)
+        response = session.get(first_redirect_url, headers=headers)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Step 4: Extract the second redirect link
+        second_redirect = soup.find("a", href=True, string=re.compile("Click here to proceed", re.IGNORECASE))
+        if not second_redirect:
+            return "❌ Error: Second redirect not found."
+
+        second_redirect_url = second_redirect["href"]
+        print(f"Second redirect URL: {second_redirect_url}")
+
+        # Step 5: Wait another 20 seconds & follow the second redirect
+        time.sleep(20)
+        response = session.get(second_redirect_url, headers=headers)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Step 6: Extract final download link
+        final_download = soup.find("a", href=True, string=re.compile("Download", re.IGNORECASE))
+        if final_download:
+            return final_download["href"]
         else:
-            return "❌ Error: Failed to get a premium link from HotDebrid."
+            return "❌ Error: Final download link not found."
 
     except requests.exceptions.RequestException as e:
         return f"❌ Error: {e}"
@@ -85,23 +111,35 @@ def extract_zip(file_path):
 
 # Function to send a file to Telegram
 async def send_file_to_telegram(file_path, message):
-    with bot:
-        file_size = os.path.getsize(file_path)
+    await bot.start()  # Fix: Properly start Pyrogram
+    
+    file_size = os.path.getsize(file_path)
 
-        if file_size > 2000000000:  # 2GB limit for Telegram bots
-            await message.reply_text("❌ File is too large to send on Telegram!")
-            return
-        
-        # Check file type and send accordingly
-        if file_path.lower().endswith((".mp4", ".mkv", ".avi", ".mov")):
-            await bot.send_video(CHAT_ID, video=file_path, caption="📽️ Here is your video file!")
-        else:
-            await bot.send_document(CHAT_ID, document=file_path, caption="📂 Here is your file!")
+    if file_size > 2000000000:  # 2GB limit for Telegram bots
+        await message.reply_text("❌ File is too large to send on Telegram!")
+        return
+    
+    # Ensure Telegram detects it as a video
+    if file_path.lower().endswith((".mp4", ".mkv", ".avi", ".mov")):
+        await bot.send_video(
+            chat_id=CHAT_ID,
+            video=file_path,
+            caption="📽️ Here is your video file!",
+            supports_streaming=True
+        )
+    else:
+        await bot.send_document(
+            chat_id=CHAT_ID,
+            document=file_path,
+            caption="📂 Here is your file!"
+        )
+
+    await bot.stop()  # Fix: Properly stop Pyrogram
 
 # Telegram bot command handler
 @bot.on_message(filters.command("start"))
 def start_command(client: Client, message: Message):
-    message.reply_text("✅ Bot is running! Send me a DropGalaxy link to bypass using HotDebrid.")
+    message.reply_text("✅ Bot is running! Send me a DropGalaxy link to bypass using AnyDebrid.")
 
 # Telegram bot handler for DropGalaxy links
 @bot.on_message(filters.text & ~filters.command(["start"]))
@@ -109,9 +147,9 @@ async def handle_dropgalaxy(client: Client, message: Message):
     text = message.text.strip()
 
     if "dropgalaxy" in text:
-        await message.reply_text("⏳ Checking HotDebrid for a premium link...")
+        await message.reply_text("⏳ Checking AnyDebrid for a premium link...")
 
-        # Get direct download link from HotDebrid
+        # Get direct download link from AnyDebrid
         direct_link = get_premium_link(text)
         if "❌" in direct_link:
             await message.reply_text(direct_link)
