@@ -6,6 +6,7 @@ import asyncio
 import zipfile
 from pyrogram import Client, filters
 from pyrogram.types import Message
+from bs4 import BeautifulSoup
 from flask import Flask
 from threading import Thread
 
@@ -39,45 +40,38 @@ def bypass_dropgalaxy(url):
         if response.status_code != 200:
             return "❌ Error: Unable to access DropGalaxy."
 
+        soup = BeautifulSoup(response.text, "html.parser")
+
         # Extract form action URL
-        match = re.search(r'action="([^"]+)"', response.text)
-        if not match:
-            return "❌ Error: No action URL found."
+        form = soup.find("form")
+        if not form or not form.get("action"):
+            return "❌ Error: No form action found."
 
-        action_url = match.group(1)
+        action_url = form.get("action")
 
-        # Extract key parameters
-        match = re.search(r'name="op" value="([^"]+)"', response.text)
-        if not match:
-            return "❌ Error: No operation key found."
+        # Extract key parameters from the form
+        input_fields = soup.find_all("input")
+        payload = {}
+        for field in input_fields:
+            name = field.get("name")
+            value = field.get("value", "")
+            if name:
+                payload[name] = value
 
-        op_value = match.group(1)
-
-        file_id_match = re.search(r'name="id" value="([^"]+)"', response.text)
-        if not file_id_match:
-            return "❌ Error: No file ID found."
-
-        file_id = file_id_match.group(1)
-
-        payload = {
-            'op': op_value,
-            'usr_login': '',
-            'id': file_id,
-            'fname': '',
-            'referer': '',
-            'method_free': 'Free Download'
-        }
+        if "op" not in payload or "id" not in payload:
+            return "❌ Error: Missing required form fields."
 
         # Step 2: Submit form and wait for countdown
         time.sleep(5)
         post_response = session.post(action_url, data=payload, headers=headers)
+        post_soup = BeautifulSoup(post_response.text, "html.parser")
 
-        # Step 3: Extract direct download link using a better regex pattern
-        final_match = re.search(r'<a[^>]+href="(https://[^"]+)"[^>]*>\s*Download\s*</a>', post_response.text, re.IGNORECASE)
-        if final_match:
-            return final_match.group(1)
-        else:
-            return "❌ Error: Direct download link not found. DropGalaxy may have updated their system."
+        # Step 3: Extract direct download link
+        download_button = post_soup.find("a", string=re.compile("Download", re.IGNORECASE))
+        if download_button and download_button.get("href"):
+            return download_button.get("href")
+
+        return "❌ Error: Direct download link not found. DropGalaxy may have updated their system."
 
     except requests.exceptions.RequestException as e:
         return f"❌ Error: {e}"
