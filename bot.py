@@ -3,34 +3,30 @@ import requests
 import re
 import time
 import threading
-from flask import Flask, request
-from telegram import Update, Bot
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, Dispatcher
+from flask import Flask
+from telegram import Update
+from telegram.ext import Application, MessageHandler, filters
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Telegram bot token (Replace with your actual bot token)
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-bot = Bot(token=TOKEN)
+# Get bot token from environment variables
+TOKEN = os.getenv("BOT_TOKEN")
 
 # Function to bypass DropGalaxy and get the direct download link
 def bypass_dropgalaxy(url):
     session = requests.Session()
 
-    # Visit the initial page
     response = session.get(url)
     if response.status_code != 200:
         return "Error: Unable to access DropGalaxy"
 
-    # Extract form data for redirect
     match = re.search(r'action="([^"]+)"', response.text)
     if not match:
         return "Error: No action URL found"
 
     action_url = match.group(1)
 
-    # Extract key parameter
     match = re.search(r'name="op" value="([^"]+)"', response.text)
     if not match:
         return "Error: No operation key found"
@@ -46,11 +42,9 @@ def bypass_dropgalaxy(url):
         'method_free': 'Free Download'
     }
 
-    # Submit the form to get the final download link
     time.sleep(5)  # Wait for the countdown timer
     post_response = session.post(action_url, data=payload)
 
-    # Extract the final download URL
     final_match = re.search(r'href="(https://[^"]+)"', post_response.text)
     if final_match:
         return final_match.group(1)
@@ -58,19 +52,19 @@ def bypass_dropgalaxy(url):
         return "Error: Direct link not found"
 
 # Function to handle messages
-def handle_message(update: Update, context: CallbackContext) -> None:
+async def handle_message(update: Update, context):
     text = update.message.text
     if "dropgalaxy" in text:
-        update.message.reply_text("Processing your link, please wait...")
+        await update.message.reply_text("Processing your link, please wait...")
 
         direct_link = bypass_dropgalaxy(text)
 
         if "Error" in direct_link:
-            update.message.reply_text(direct_link)
+            await update.message.reply_text(direct_link)
         else:
-            update.message.reply_text(f"✅ Here is your direct download link:\n{direct_link}")
+            await update.message.reply_text(f"✅ Here is your direct download link:\n{direct_link}")
     else:
-        update.message.reply_text("Please send a valid DropGalaxy link.")
+        await update.message.reply_text("Please send a valid DropGalaxy link.")
 
 # Flask Route for Uptime Monitoring
 @app.route('/')
@@ -79,11 +73,11 @@ def home():
 
 # Function to start the Telegram bot
 def run_bot():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-    updater.start_polling()
-    updater.idle()
+    app_telegram = Application.builder().token(TOKEN).build()
+    app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("Bot is running...")
+    app_telegram.run_polling()
 
 # Run the bot in a separate thread
 threading.Thread(target=run_bot).start()
