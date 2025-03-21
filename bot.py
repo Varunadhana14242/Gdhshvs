@@ -73,7 +73,7 @@ def start_command(client: Client, message: Message):
     message.reply_text("✅ Bot is running! Send me a DropGalaxy link to bypass.")
 
 # Telegram bot handler for DropGalaxy links
-@bot.on_message(filters.text & ~filters.command)
+@bot.on_message(filters.text & ~filters.command(["start"]))
 def handle_dropgalaxy(client: Client, message: Message):
     text = message.text.strip()
 
