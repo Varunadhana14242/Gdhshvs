@@ -17,3 +17,12 @@ requests
 gunicorn
 beautifulsoup4
 selenium
+selenium
+undetected-chromedriver
+webdriver-manager
+requests
+pyrogram
+tgcrypto
+flask
+gunicorn
+beautifulsoup4
