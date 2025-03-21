@@ -1,12 +1,15 @@
 import os
 import time
 import requests
-import re
-import asyncio
-import zipfile
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from bs4 import BeautifulSoup
 from flask import Flask
 from threading import Thread
 
@@ -14,7 +17,7 @@ from threading import Thread
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = int(os.getenv("CHAT_ID"))
+CHAT_ID = int(os.getenv("CHAT_ID"))  
 
 # Initialize Pyrogram bot client
 bot = Client("telegram_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -26,66 +29,71 @@ app = Flask(__name__)
 def health_check():
     return "✅ Bot is running!", 200
 
-# Function to extract the direct download link from DropGalaxy
+# Function to extract the DropGalaxy direct download link with adblock and 10x speed
 def extract_dropgalaxy_link(url):
-    session = requests.Session()
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-    }
-
+    options = Options()
+    options.add_argument("--headless")  # Run without UI
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--window-size=1920,1080")
+    
+    # Load Chrome with uBlock Origin (AdBlock)
+    driver = uc.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
     try:
-        # Step 1: Get the initial page
-        response = session.get(url, headers=headers)
-        if response.status_code != 200:
-            return "❌ Error: Unable to access DropGalaxy."
+        driver.get(url)
+        print("🚀 DropGalaxy page loaded.")
 
-        # Extract file ID
-        file_id_match = re.search(r'name="id" value="([^"]+)"', response.text)
-        if not file_id_match:
-            return "❌ Error: No file ID found."
+        # Wait for the "Free Download" button and click it
+        free_download_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.NAME, "method_free"))
+        )
+        free_download_button.click()
+        print("✅ Clicked 'Free Download' button.")
 
-        file_id = file_id_match.group(1)
+        # Skip countdown timer (Wait max 15s)
+        print("⏳ Waiting for countdown to finish...")
+        time.sleep(8)
 
-        # Step 2: Submit form to request download
-        payload = {
-            'op': 'download2',
-            'id': file_id,
-            'method_free': 'Free Download'
-        }
+        # Extract the final direct download link
+        download_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Download')]"))
+        )
+        download_link = download_button.get_attribute("href")
 
-        time.sleep(5)  # Simulating DropGalaxy's wait timer
-        post_response = session.post(url, data=payload, headers=headers)
-        post_soup = BeautifulSoup(post_response.text, "html.parser")
-
-        # Step 3: Find the direct download link
-        download_link = post_soup.find("a", href=True, string=re.compile("https://", re.IGNORECASE))
         if download_link:
-            return download_link["href"]
+            print(f"🎯 Found direct download link: {download_link}")
+            return download_link
         else:
             return "❌ Error: Direct download link not found."
 
-    except requests.exceptions.RequestException as e:
-        return f"❌ Error: {e}"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
-# Function to download a file from a URL
+    finally:
+        driver.quit()
+
+# Function to download a file
 def download_file(url):
     local_filename = url.split("/")[-1]
     local_path = f"downloads/{local_filename}"
-
+    
     os.makedirs("downloads", exist_ok=True)
-
+    
     with requests.get(url, stream=True) as r:
         r.raise_for_status()
         with open(local_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
-    
+
     return local_path
 
-# Function to send the video file to Telegram
+# Function to send a file to Telegram
 async def send_file_to_telegram(file_path, message):
     await bot.start()
-
+    
     if os.path.getsize(file_path) > 2000000000:  # Telegram 2GB limit
         await message.reply_text("❌ File is too large to send on Telegram!")
         return
