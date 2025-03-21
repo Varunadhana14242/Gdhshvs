@@ -4,3 +4,9 @@ flask
 requests
 gunicorn
 zipfile36
+pyrogram
+tgcrypto
+flask
+requests
+gunicorn
+beautifulsoup4
