@@ -42,35 +42,27 @@ def extract_dropgalaxy_link(url):
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Step 2: Find the form action URL
-        form = soup.find("form", {"method": "POST"})
-        if not form:
-            return "❌ Error: No download form found."
+        # Step 2: Extract the file ID
+        file_id_match = re.search(r'name="id" value="([^"]+)"', response.text)
+        if not file_id_match:
+            return "❌ Error: No file ID found."
 
-        action_url = form.get("action")
-        if not action_url:
-            return "❌ Error: No action URL found."
+        file_id = file_id_match.group(1)
 
-        # Make sure the action URL is absolute
-        if not action_url.startswith("http"):
-            action_url = f"https://dropgalaxy.com{action_url}"
+        # Step 3: Submit form to get the direct download link
+        payload = {
+            'op': 'download2',
+            'id': file_id,
+            'method_free': 'Free Download'
+        }
 
-        # Extract hidden inputs required for submission
-        payload = {}
-        for input_tag in form.find_all("input"):
-            name = input_tag.get("name")
-            value = input_tag.get("value", "")
-            if name:
-                payload[name] = value
-
-        # Step 3: Simulate clicking the "Download" button
-        time.sleep(5)  # Simulate wait timer
-        post_response = session.post(action_url, data=payload, headers=headers)
+        time.sleep(5)  # Simulate the DropGalaxy wait timer
+        post_response = session.post(url, data=payload, headers=headers)
         post_soup = BeautifulSoup(post_response.text, "html.parser")
 
-        # Step 4: Find the final download link
-        download_link = post_soup.find("a", string=re.compile("Download", re.IGNORECASE))
-        if download_link and download_link.get("href"):
+        # Step 4: Extract the final download link
+        download_link = post_soup.find("a", href=True, string=re.compile("https://", re.IGNORECASE))
+        if download_link:
             return download_link["href"]
         else:
             return "❌ Error: Direct download link not found."
